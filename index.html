@@ -488,7 +488,6 @@
   .history-meta { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
   .history-meta .who { color: var(--text-muted); font-weight: 500; }
   .history-empty-note { font-size: 11.5px; color: var(--text-faint); text-align: center; padding: 4px 0; }
-  .warn-note { font-size:11px; color:var(--warn-text); background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:var(--radius-sm); padding:6px 10px; text-align:center; margin-bottom:8px; }
   .pending-sync-note { font-size:11px; color:var(--warn-text); background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:var(--radius-sm); padding:6px 10px; text-align:center; margin-bottom:8px; }
   .driver-times-row { display:flex; flex-direction:column; gap:2px; font-size:11.5px; color:var(--text-muted); background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; margin-bottom:8px; }
   .user-select-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:1.75rem 1rem; background:var(--white); border:1.5px solid var(--border); border-radius:16px; cursor:pointer; font-family:'Inter',sans-serif; font-size:15px; font-weight:700; color:var(--text); text-align:center; transition:border-color .15s,transform .1s,box-shadow .15s; }
@@ -4529,7 +4528,15 @@ function buildClerkCard(o) {
       productState[o.orden] = prods.length ? prods.map(() => Math.min(est, 2)) : [Math.min(est, 2)];
     }
   }
-  const incomplete = prods.length > 0 && est > 3 && productState[o.orden].some(s => s < 3);
+  // Los círculos de producto se pueden editar libremente MIENTRAS la orden no haya
+  // pasado de Ready (est<=3) — ahí el estatus general sigue al mínimo, como siempre.
+  // Una vez que la orden ya avanzó a Waiting for dock/Loading/Departed, los círculos se
+  // BLOQUEAN — ya no se pueden mover para atrás — salvo que la orden esté marcada
+  // Incomplete, que es la única puerta para decir "este producto en realidad no salió
+  // listo" después de ese punto. Con esta regla, un producto sin Ready con la orden ya
+  // avanzada SOLO puede pasar si está Incomplete — por eso ya no hace falta un aviso
+  // aparte tipo "Order moved ahead": el badge de Incomplete ya cubre exactamente ese caso.
+  const canEditProducts = canEdit && (est <= 3 || !!o.incomplete);
 
   let checklistHtml = '';
   if (prods.length > 0) {
@@ -4538,15 +4545,13 @@ function buildClerkCard(o) {
       const circles = LETTERS.slice(0, 3).map((letter, ci) => {
         const idx = ci + 1;
         const activeCls = pStat === idx ? ` active p${idx}` : '';
-        const clickAttr = canEdit ? `onclick="event.stopPropagation();setProductStatus('${safeOrden}',${i},${idx})"` : '';
-        return `<button type="button" class="pcircle${activeCls}${!canEdit ? ' disabled' : ''}" ${!canEdit ? 'disabled' : ''} aria-label="${escapeHtml(p)} — status ${letter}" ${clickAttr}>${letter}</button>`;
+        const clickAttr = canEditProducts ? `onclick="event.stopPropagation();setProductStatus('${safeOrden}',${i},${idx})"` : '';
+        return `<button type="button" class="pcircle${activeCls}${!canEditProducts ? ' disabled' : ''}" ${!canEditProducts ? 'disabled' : ''} aria-label="${escapeHtml(p)} — status ${letter}" ${clickAttr}>${letter}</button>`;
       }).join('');
       return `<div class="product-item"><span class="product-name">${escapeHtml(p)}</span><div class="pcircle-row">${circles}</div></div>`;
     }).join('');
     checklistHtml = `<div class="checklist"><p class="checklist-title">Products</p>${items}</div>`;
   }
-
-  const warnHtml = incomplete ? `<p class="warn-note">⚠️ Order moved ahead — not all products are Ready yet</p>` : '';
 
   // Una vez que el pedido llega a "Ready" o más adelante, ya no tiene caso seguir
   // mostrando/editando el campo de "Expected ready" — el pedido ya cumplió su propósito.
@@ -4610,7 +4615,6 @@ function buildClerkCard(o) {
     ${driverTimesRow}
     ${checklistHtml}
     ${expectedReadyRow}
-    ${warnHtml}
     ${pendingSyncNote}
     <div class="status-btns">${btns}</div>
     <p class="status-desc-lbl" id="desc-${safeOrdenHtml}">${DESCS[est - 1]}</p>
@@ -5230,13 +5234,13 @@ function allProductsReady(orden) {
   return Array.isArray(ps) && ps.length > 0 && ps.every(s => s === 3);
 }
 
-// Product circle click (O/P/R only) — siempre se puede tocar, con o sin Incomplete.
-// Mientras la orden no haya pasado de Ready (est <= 3), el estatus general SIGUE al
-// producto más atrasado (igual que siempre) — así que bajar un círculo puede jalar la
-// orden entera hacia atrás. Una vez que ya pasó de Ready (Waiting for dock en
-// adelante), tocar un producto ya no jala el estatus general — nomás deja el detalle
-// de ese producto para el récord (Incomplete solo importa para el requisito de avanzar
-// de estatus, ver blockedPastReady/setOrderStatus, no para poder tocar los círculos).
+// Product circle click (O/P/R only) — solo se puede llegar aquí si canEditProducts
+// dejó dibujar el círculo (ver buildClerkCard): mientras la orden no haya pasado de
+// Ready, o si ya pasó pero está marcada Incomplete. Mientras la orden no haya pasado de
+// Ready (est <= 3), el estatus general SIGUE al producto más atrasado (igual que
+// siempre) — así que bajar un círculo puede jalar la orden entera hacia atrás. Una vez
+// que ya pasó de Ready, tocar un producto (solo posible con Incomplete) ya no jala el
+// estatus general — nomás deja el detalle de ese producto para el récord.
 function setProductStatus(orden, idx, status) {
   if (!productState[orden]) return;
   const o = ordenes.find(x => String(x.orden) === String(orden));
