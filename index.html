@@ -5733,7 +5733,14 @@ async function extractLines(arrayBuffer) {
   return lines;
 }
 
-const ORDER_HEADER_RE = /^(\d{2}\/\d{2}\/\d{2})\s+(?:\d{1,2}:\d{2}\s+)?(.+?)\s+(\d+)\s+(SP\d+)\s+([DF])\s+([A-Z]+)\s+([\d,]+)(.*)$/;
+// El grupo de UNITS (7) es OPCIONAL a propósito — algunas órdenes del PDF (ej. líneas
+// de puro "Freight Charge"/pallet, o ciertas cuentas como "Ibarra ... RAUL") vienen con
+// la columna UNITS en blanco en el reporte. Antes esto era obligatorio, así que esas
+// órdenes NUNCA matcheaban como encabezado — la orden completa (y su primer producto)
+// se colaban como "producto" fantasma de la orden ANTERIOR que sí había matcheado. Con
+// esto opcional, la orden se reconoce igual aunque no traiga UNITS (currentUnits queda
+// vacío, pero eso no se usa para nada más adelante en el parseo).
+const ORDER_HEADER_RE = /^(\d{2}\/\d{2}\/\d{2})\s+(?:\d{1,2}:\d{2}\s+)?(.+?)\s+(\d+)\s+(SP\d+)\s+([DF])\s+([A-Z]+)(?:\s+([\d,]+))?(.*)$/;
 const QTY_PRODUCT_RE = /^([\d,]+)?\s*(.+)$/;
 
 // "MM/DD/YY" (como sale del encabezado del PDF) -> "yyyy-MM-dd" (como lo espera el
@@ -5771,7 +5778,7 @@ function parseOrders(lines) {
       const [, date, name, stnum, sp, status, spn, units, rest] = m;
       current = {
         date, name: name.trim(), stnum, sp, status, spn,
-        units: units.replace(/,/g, ""), note: rest.trim(), products: []
+        units: units ? units.replace(/,/g, "") : "", note: rest.trim(), products: []
       };
     } else if (current !== null) {
       const qm = line.match(QTY_PRODUCT_RE);
