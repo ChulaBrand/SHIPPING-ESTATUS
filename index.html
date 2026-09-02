@@ -6252,32 +6252,41 @@ function fallbackProductLabel(desc) {
   return m ? m[1].toUpperCase() : '?';
 }
 // Mismo estilo de código compacto que Papaya (ej. "¾-24"): "{pallets}-{PRODUCTO}", con
-// "(+resto)" si no cae exacto — varias líneas se juntan bajo el MISMO Producto (ej. dos
-// presentaciones de LIMA en la misma orden) para que el código quede tan corto como el
-// de Papaya en vez de una lista larga de descripciones crudas del PDF.
+// "(+resto)" si no cae exacto. Se agrupa por Producto+Presentación (no solo Producto) —
+// dos presentaciones distintas del mismo Producto en la misma orden (ej. Lima Regular y
+// Lima HEB) NUNCA se juntan en una sola línea, para no perder de cuál presentación se
+// trata ni cuánto hay de cada una — mismo cuidado que Papaya nunca junta ½ con ¾. Varias
+// líneas del PDF con la MISMA Presentación sí se suman entre ellas (ej. el mismo
+// producto repetido por tarima).
 function buildGenericReportRows(orders, businessUnit) {
   const parsed = [];
   for (const o of orders) {
-    const productGroups = new Map(); // PRODUCTO (mayúsculas) -> { label, qty, divisor, matched }
+    const productGroups = new Map(); // "PRODUCTO|PRESENTACION" -> { producto, presentacion, qty, divisor, matched }
     let hasMatch = false;
     for (const [qty, desc] of o.products) {
       if (qty === null) continue;
       if (!classifyGenericLine(desc, businessUnit)) continue;
       hasMatch = true;
       const { divisor, matched, row } = findPalletDivisor(desc, businessUnit);
-      const label = row ? row.producto : fallbackProductLabel(desc);
-      const key = label.toUpperCase();
-      // Si el mismo Producto ya apareció con otra presentación (y por lo tanto otro
-      // divisor) en esta misma orden, se queda con el divisor de la PRIMERA línea vista
-      // — simplificación a propósito, en la práctica cada orden trae una sola
-      // presentación por producto.
-      const g = productGroups.get(key) || { label, qty: 0, divisor, matched };
+      const producto = row ? row.producto : fallbackProductLabel(desc);
+      const presentacion = row ? row.presentacion : '';
+      const key = `${producto}|${presentacion}`.toUpperCase();
+      const g = productGroups.get(key) || { producto, presentacion, qty: 0, divisor, matched };
       g.qty += qty;
       productGroups.set(key, g);
     }
     if (!hasMatch) continue;
+    const groups = [...productGroups.values()];
+    // La Presentación solo se agrega al código cuando el mismo Producto trae MÁS DE UNA
+    // presentación distinta en esta orden — con una sola, mostrarla no distingue nada
+    // (ej. "1-TOMATE" en vez de "1-TOMATE CONVENCIONAL", que es su única presentación).
+    const presentacionCountByProducto = new Map();
+    groups.forEach(g => presentacionCountByProducto.set(g.producto, (presentacionCountByProducto.get(g.producto) || 0) + 1));
+    groups.forEach(g => {
+      g.label = (presentacionCountByProducto.get(g.producto) > 1 && g.presentacion) ? `${g.producto} ${g.presentacion}` : g.producto;
+    });
     const shortName = shortenClientName(o.name, o.note, o.sp);
-    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, groups: [...productGroups.values()] });
+    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, groups });
   }
 
   const rows = [], flags = [];
