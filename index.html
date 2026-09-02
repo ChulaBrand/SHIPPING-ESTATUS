@@ -564,6 +564,10 @@
   .pp-btn.pp-secondary:hover { background: #E5762B; }
   .pp-btn.pp-outline { background: #fff; color: var(--pp-purple); border: 2px solid var(--pp-purple); }
   .pp-btn.pp-outline:hover { background: #FBF9FD; }
+  .pp-bu-label { font-size:12.5px; font-weight:700; color: var(--pp-muted); margin-bottom:10px; text-transform:uppercase; letter-spacing:.04em; }
+  .pp-bu-select { display:flex; gap:8px; flex-wrap:wrap; }
+  .pp-bu-btn { flex:1 1 auto; min-width:110px; background:var(--pp-card); color:var(--pp-text); border:2px solid var(--pp-border); border-radius:10px; padding:12px 8px; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit; text-align:center; }
+  .pp-bu-btn.active { border-color: var(--pp-purple); background: var(--pp-purple); color:#fff; }
   .pp-summary { font-size: 14px; margin: 0 0 14px; color: var(--pp-muted); }
   .pp-summary b { color: var(--pp-purple); }
   .pp-actions { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
@@ -1002,6 +1006,7 @@
       <button class="admin-tab-btn" data-tab="driver" onclick="showAdminTab('driver')"><i class="ti ti-truck"></i>Driver/Client Screen</button>
       <button class="admin-tab-btn" data-tab="settings" onclick="showAdminTab('settings')"><i class="ti ti-clipboard-list"></i>Order Coordinator</button>
       <button class="admin-tab-btn" data-tab="business" onclick="showAdminTab('business')"><i class="ti ti-category-2"></i>Business Units</button>
+      <button class="admin-tab-btn" data-tab="pallet" onclick="showAdminTab('pallet')"><i class="ti ti-package"></i>Pallet Config</button>
       <button class="admin-tab-btn" data-tab="analytics" onclick="showAdminTab('analytics')"><i class="ti ti-chart-bar"></i>Analytics Layout</button>
     </div>
     <div class="admin-main">
@@ -1214,6 +1219,27 @@
       <div id="admin-business-units-list"></div>
     </div>
 
+    <div class="admin-tab-panel" id="admin-tab-pallet" style="display:none;">
+      <div class="admin-info-box"><i class="ti ti-info-circle"></i><span>Boxes-per-pallet reference table used by the Upload screen's Citrus/Plantain/Tropicales reports (Papaya keeps using the "Boxes per pallet" settings on the Clients tab, unchanged). The Business Unit is guessed automatically from the Producto name — if a new product doesn't match, it lands under "Unassigned" and needs the Business Unit set by hand in the Sheet.</span></div>
+
+      <div class="checklist" style="margin:0 0 16px;">
+        <p class="checklist-title"><i class="ti ti-package"></i> Add row</p>
+        <form style="display:flex;flex-direction:column;gap:8px;" onsubmit="event.preventDefault(); adminAddPalletConfigRow();">
+          <input id="pallet-new-producto" type="text" placeholder="Producto (e.g. LIMA)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <input id="pallet-new-presentacion" type="text" placeholder="Presentación (e.g. REGULAR)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <div style="display:flex;gap:8px;">
+            <input id="pallet-new-libras" type="number" placeholder="Libras" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
+            <input id="pallet-new-cajas" type="number" placeholder="Cajas/Pallet" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
+          </div>
+          <input id="pallet-new-comentario" type="text" placeholder="Comentario (optional)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <button type="submit" class="btn-primary">Add row</button>
+        </form>
+        <p class="upload-status show" id="admin-add-pallet-status" role="status" aria-live="polite" style="display:none;"></p>
+      </div>
+
+      <div id="admin-pallet-config-list"></div>
+    </div>
+
     <div class="admin-tab-panel" id="admin-tab-analytics" style="display:none;">
       <div class="admin-section-card">
         <div class="admin-card-header"><span class="icon"><i class="ti ti-refresh"></i></span><p class="section-label" style="margin-bottom:0;">Auto-refresh</p></div>
@@ -1398,8 +1424,18 @@
       <button class="btn-back" onclick="goPapayaBack()">← Back</button>
     </div>
     <div class="pp-header">
-      <h1>🥭 Chula Brand — Papaya Report</h1>
+      <h1 id="papayaHeaderTitle">🥭 Chula Brand — Papaya Report</h1>
       <p>Upload the "Sales Orders Not Shipped" PDF. Everything runs in your browser — nothing gets uploaded to any server.</p>
+    </div>
+
+    <div class="pp-card">
+      <div class="pp-bu-label">Business Unit</div>
+      <div class="pp-bu-select" id="papayaBuSelect">
+        <button type="button" class="pp-bu-btn active" data-bu="PAPAYA">🥭 Papaya</button>
+        <button type="button" class="pp-bu-btn" data-bu="CITRUS">🍋 Citrus</button>
+        <button type="button" class="pp-bu-btn" data-bu="PLANTAIN">🍌 Plantain</button>
+        <button type="button" class="pp-bu-btn" data-bu="TROPICALES">🍍 Tropicales</button>
+      </div>
     </div>
 
     <div class="pp-card">
@@ -1497,6 +1533,10 @@ function escapeForJsAttr(str) {
 let APP_SETTINGS = { standardDivisor: 48, hebDivisor: 60, stalledHours: 6, stalledFloorHour: 10, soonHours: 1, lockHours: 48, chofRefreshSeconds: 30, chofShowClientName: 1, chofShowProducts: 1, chofGroupClientOrders: 1, shipRefreshSeconds: 120, analyticsRefreshSeconds: 0, savedOrdersHours: 24, statusRank1: 1, statusRank2: 2, statusRank3: 3, statusRank4: 4, statusRank5: 5 };
 let CLIENTS_CONFIG = []; // [{ nombrePatron, nombreCorto, cajasPorTarima, activo }], desde Admin → Clients
 let clientsConfigLoaded = false;
+let PALLET_CONFIG = []; // [{ producto, presentacion, libras, cajasPorPallet, comentario, businessUnit }], desde Admin → Pallet Config
+let palletConfigLoaded = false;
+let BUSINESS_UNIT_KEYWORDS = {}; // { PAPAYA: [...], CITRUS: [...], PLANTAIN: [...], TROPICALES: [...] }
+let businessUnitKeywordsLoaded = false;
 // false SOLO si el cliente está en la lista y marcado Inactive — uno que no aparece en
 // Admin → Clients para nada se deja pasar (nunca se ha configurado, no hay motivo para
 // bloquearlo). Usado al subir un PDF (ver handlePapayaFile) para que un cliente
@@ -1521,6 +1561,31 @@ async function loadClientsConfig() {
     const c = await res.json();
     if (Array.isArray(c)) { CLIENTS_CONFIG = c; clientsConfigLoaded = true; }
   } catch (e) { /* se queda vacío -> divisorFor cae al estándar */ }
+}
+// Tabla "cajas por pallet" (Admin → Pallet Config) — usada por findPalletDivisor() para
+// el reporte de Citrus/Plantain/Tropicales (Papaya sigue con su propio divisorFor()).
+async function loadPalletConfig() {
+  try {
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify({ sessionToken: SESSION_TOKEN, action: 'getPalletConfig' }) });
+    const c = await res.json();
+    if (Array.isArray(c)) { PALLET_CONFIG = c; palletConfigLoaded = true; }
+  } catch (e) { /* se queda vacío -> findPalletDivisor cae al estándar y marca REVISAR */ }
+}
+// Palabras clave de cada Business Unit (Admin → Business Units) — mismas que usa el
+// backend para clasificar el feed de Citrus/Lima (ver productMatchesBusinessUnit en
+// Code.gs). Se reusan aquí para saber qué línea de producto de un PDF pertenece a qué
+// sección, sin duplicar esa lista a mano en el frontend.
+async function loadBusinessUnitKeywords() {
+  try {
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify({ sessionToken: SESSION_TOKEN, action: 'getBusinessUnitKeywordsOnly' }) });
+    const list = await res.json();
+    if (Array.isArray(list)) {
+      const map = {};
+      list.forEach(bu => { map[bu.businessUnit] = bu.keywords || []; });
+      BUSINESS_UNIT_KEYWORDS = map;
+      businessUnitKeywordsLoaded = true;
+    }
+  } catch (e) { /* se queda vacío -> classifyGenericLine no matchea nada, se ve reflejado como 0 filas */ }
 }
 
 const LABELS = ["Order Confirmed","Processing","Ready","Waiting for dock","Loading","Departed"];
@@ -1909,6 +1974,8 @@ function goPapayaUpload(returnScreen) {
   papayaReturnScreen = returnScreen || 'screen-rol';
   show('screen-papaya-upload');
   if (!clientsConfigLoaded) loadClientsConfig();
+  if (!palletConfigLoaded) loadPalletConfig();
+  if (!businessUnitKeywordsLoaded) loadBusinessUnitKeywords();
 }
 // Subir un PDF manda las órdenes directo al Sheet (writeDraft/syncDraft), y eso
 // necesita una sesión real — ya no hay PIN compartido para hacerlo "de paso" sin
@@ -1952,6 +2019,7 @@ function goRol() {
   // razón visible para la nueva persona.
   adminClientsLoaded = false; adminSettingsLoaded = false; adminDriverLoaded = false;
   analyticsLayoutLoaded = false; clientsConfigLoaded = false;
+  palletConfigLoaded = false; businessUnitKeywordsLoaded = false;
   statusFilter.clear(); productFilter.clear(); incompleteFilterActive = false;
   searchActive = false;
   const searchInput = document.getElementById('enc-search');
@@ -2452,7 +2520,7 @@ async function adminToggleUser(name, active) {
 }
 
 // ── Navegación de pestañas dentro de Admin ──
-let adminClientsLoaded = false, adminSettingsLoaded = false, adminDriverLoaded = false, adminBusinessUnitsLoaded = false;
+let adminClientsLoaded = false, adminSettingsLoaded = false, adminDriverLoaded = false, adminBusinessUnitsLoaded = false, adminPalletConfigLoaded = false;
 function showAdminTab(tab) {
   document.querySelectorAll('.admin-tab-panel').forEach(p => p.style.display = 'none');
   document.getElementById('admin-tab-' + tab).style.display = '';
@@ -2461,6 +2529,7 @@ function showAdminTab(tab) {
   if (tab === 'settings' && !adminSettingsLoaded) { adminSettingsLoaded = true; loadAdminSettings(); }
   if (tab === 'driver' && !adminDriverLoaded) { adminDriverLoaded = true; loadDriverScreenSettings(); }
   if (tab === 'business' && !adminBusinessUnitsLoaded) { adminBusinessUnitsLoaded = true; loadAdminBusinessUnits(); }
+  if (tab === 'pallet' && !adminPalletConfigLoaded) { adminPalletConfigLoaded = true; loadAdminPalletConfig(); }
 }
 
 // Junta en una sola confirmación TODO lo que va a cambiar (nada de "sí" a ciegas
@@ -2923,6 +2992,123 @@ function removeBusinessUnitEmail(bu, email) {
   entry.emails = entry.emails.filter(e => e !== email);
   renderAdminBusinessUnits();
   saveBusinessUnitEmails(bu);
+}
+
+// ── PALLET CONFIG (Admin) ──
+// Tabla "cajas por pallet" para el reporte de Citrus/Plantain/Tropicales (ver
+// findPalletDivisor/buildGenericReportRows en la pantalla de Upload). Agrupada por
+// Business Unit para que se vea igual de organizada que se pidió ("4 secciones... y
+// luego se desglosa"), aunque aquí lo que se desglosa es Producto/Presentación, no
+// clientes — el desglose por cliente pasa después, al generar el reporte de un PDF.
+let palletConfigData = [];
+const PALLET_BU_ORDER = ['PAPAYA', 'CITRUS', 'PLANTAIN', 'TROPICALES'];
+const PALLET_BU_ICONS = { PAPAYA: '🥭', CITRUS: '🍋', PLANTAIN: '🍌', TROPICALES: '🍍' };
+async function loadAdminPalletConfig() {
+  const list = document.getElementById('admin-pallet-config-list');
+  list.innerHTML = '<div class="empty-state"><i class="ti ti-loader"></i>Loading...</div>';
+  try {
+    const result = await adminApiCall('getPalletConfig');
+    if (!result) return;
+    if (result.error) { list.innerHTML = `<div class="empty-state"><i class="ti ti-alert-circle"></i>${result.error}</div>`; return; }
+    palletConfigData = result;
+    renderAdminPalletConfig();
+  } catch (e) { list.innerHTML = '<div class="empty-state">Connection error</div>'; }
+}
+function renderAdminPalletConfig() {
+  const list = document.getElementById('admin-pallet-config-list');
+  if (!palletConfigData.length) { list.innerHTML = '<div class="empty-state"><i class="ti ti-package"></i>No rows yet.</div>'; return; }
+  const groups = PALLET_BU_ORDER.slice();
+  if (palletConfigData.some(r => !groups.includes(r.businessUnit))) groups.push('');
+  list.innerHTML = groups.map(bu => {
+    const rows = palletConfigData.filter(r => (r.businessUnit || '') === bu);
+    if (!rows.length) return '';
+    const label = bu ? `${PALLET_BU_ICONS[bu] || ''} ${bu}` : '⚠️ Unassigned';
+    return `<div class="admin-section-card">
+      <div class="admin-card-header"><span class="icon"><i class="ti ti-package"></i></span><p class="section-label" style="margin-bottom:0;">${escapeHtml(label)}</p></div>
+      ${rows.map(renderPalletConfigRow).join('')}
+    </div>`;
+  }).join('');
+}
+function renderPalletConfigRow(r) {
+  const safeProd = escapeForJsAttr(r.producto), safePres = escapeForJsAttr(r.presentacion);
+  return `
+  <div class="client-row-block">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span class="name">${escapeHtml(r.producto)} — ${escapeHtml(r.presentacion)}</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+        <span style="font-size:11.5px;color:var(--text-faint);white-space:nowrap;">${r.libras} Lb · ${r.cajasPorPallet} cajas/pallet</span>
+        <button class="mini-filter-btn" style="opacity:1;border:1px solid var(--border);width:30px;height:30px;" onclick="togglePalletConfigEditPanel(this)" title="Edit" aria-label="Edit"><i class="ti ti-pencil"></i></button>
+      </div>
+    </div>
+    <div class="client-edit-panel" style="display:none;flex-direction:column;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="display:flex;gap:8px;">
+        <input type="text" class="pallet-edit-producto" value="${escapeHtml(r.producto)}" placeholder="Producto" style="flex:1;height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-size:12.5px;">
+        <input type="text" class="pallet-edit-presentacion" value="${escapeHtml(r.presentacion)}" placeholder="Presentación" style="flex:1;height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-size:12.5px;">
+      </div>
+      <div style="display:flex;gap:8px;">
+        <input type="number" class="pallet-edit-libras" value="${r.libras || ''}" placeholder="Libras" style="flex:1;height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;">
+        <input type="number" class="pallet-edit-cajas" value="${r.cajasPorPallet || ''}" placeholder="Cajas/Pallet" style="flex:1;height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;">
+      </div>
+      <input type="text" class="pallet-edit-comentario" value="${escapeHtml(r.comentario)}" placeholder="Comentario" style="height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px;font-size:12.5px;">
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="admin-toggle-btn" style="padding:4px 10px;" onclick="submitPalletConfigEdit(this, '${safeProd}', '${safePres}')">Save</button>
+        <button type="button" class="admin-toggle-btn is-inactive" style="padding:4px 10px;" onclick="submitPalletConfigDelete('${safeProd}', '${safePres}')">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+function togglePalletConfigEditPanel(btnEl) {
+  const panel = btnEl.closest('.client-row-block').querySelector(':scope > .client-edit-panel');
+  panel.style.display = (panel.style.display === 'flex') ? 'none' : 'flex';
+}
+async function adminAddPalletConfigRow() {
+  const producto = document.getElementById('pallet-new-producto').value.trim();
+  const presentacion = document.getElementById('pallet-new-presentacion').value.trim();
+  const libras = document.getElementById('pallet-new-libras').value.trim();
+  const cajasPorPallet = document.getElementById('pallet-new-cajas').value.trim();
+  const comentario = document.getElementById('pallet-new-comentario').value.trim();
+  const statusEl = document.getElementById('admin-add-pallet-status');
+  statusEl.style.display = 'block';
+  if (!producto || !presentacion) { statusEl.textContent = 'Enter Producto and Presentación.'; statusEl.className = 'upload-status show err'; return; }
+  statusEl.textContent = 'Adding...'; statusEl.className = 'upload-status show loading';
+  try {
+    const result = await adminApiCall('adminAddPalletConfigRow', { producto, presentacion, libras, cajasPorPallet, comentario });
+    if (!result) return;
+    if (result.error) { statusEl.textContent = result.error; statusEl.className = 'upload-status show err'; return; }
+    ['pallet-new-producto','pallet-new-presentacion','pallet-new-libras','pallet-new-cajas','pallet-new-comentario'].forEach(id => document.getElementById(id).value = '');
+    statusEl.textContent = '✓ Row added.'; statusEl.className = 'upload-status show ok';
+    loadAdminPalletConfig();
+    palletConfigLoaded = false; // se vuelve a jalar la próxima vez que se abra el subidor de PDF
+  } catch (e) { statusEl.textContent = 'Connection error.'; statusEl.className = 'upload-status show err'; }
+}
+async function submitPalletConfigEdit(btnEl, origProducto, origPresentacion) {
+  const block = btnEl.closest('.client-row-block');
+  const producto = block.querySelector('.pallet-edit-producto').value.trim();
+  const presentacion = block.querySelector('.pallet-edit-presentacion').value.trim();
+  const libras = block.querySelector('.pallet-edit-libras').value.trim();
+  const cajasPorPallet = block.querySelector('.pallet-edit-cajas').value.trim();
+  const comentario = block.querySelector('.pallet-edit-comentario').value.trim();
+  if (!producto || !presentacion) { showToast('Enter Producto and Presentación.', 'error'); return; }
+  if (!confirm(`Confirm this change?\n\n${origProducto} — ${origPresentacion} → ${producto} — ${presentacion}, ${libras} Lb, ${cajasPorPallet} cajas/pallet`)) return;
+  try {
+    const result = await adminApiCall('adminUpdatePalletConfigRow', { origProducto, origPresentacion, producto, presentacion, libras, cajasPorPallet, comentario });
+    if (!result) return;
+    if (result.error) { showToast(result.error, 'error'); return; }
+    showToast('Row updated ✓');
+    loadAdminPalletConfig();
+    palletConfigLoaded = false;
+  } catch (e) { showToast('Connection error.'); }
+}
+async function submitPalletConfigDelete(producto, presentacion) {
+  if (!confirm(`Delete this row?\n\n${producto} — ${presentacion}`)) return;
+  try {
+    const result = await adminApiCall('adminDeletePalletConfigRow', { producto, presentacion });
+    if (!result) return;
+    if (result.error) { showToast(result.error, 'error'); return; }
+    showToast('Row deleted ✓');
+    loadAdminPalletConfig();
+    palletConfigLoaded = false;
+  } catch (e) { showToast('Connection error.'); }
 }
 
 // Reordenar con flechas ▲▼ (mismo patrón que Analytics Layout), guarda como
@@ -5968,6 +6154,134 @@ function buildReportRows(orders) {
   return [rows, flags];
 }
 
+// ── REPORTE GENÉRICO PARA CITRUS/PLANTAIN/TROPICALES ────────────────────────────────
+// A diferencia de Papaya (clasificación fina por color/tamaño, ver classifyPapayaLine),
+// aquí el "código" es el texto de la descripción TAL CUAL viene en el PDF — el usuario
+// pidió explícitamente dejarlo así por ahora ("lo dejamos como viene... luego lo
+// cambiamos"). Lo único que se calcula es a qué Business Unit pertenece cada línea
+// (reusando las Keywords de Admin → Business Units) y cuántas cajas caben por pallet
+// (ver findPalletDivisor, contra la tabla de Admin → Pallet Config).
+function escapeRegExpJs(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function classifyGenericLine(desc, businessUnit) {
+  const keywords = BUSINESS_UNIT_KEYWORDS[businessUnit] || [];
+  const d = String(desc || '').trim();
+  return keywords.some(kw => kw && new RegExp('^' + escapeRegExpJs(kw) + '\\b', 'i').test(d));
+}
+// Producto (como se escribe en Pallet Config, en español) -> patrón que se busca en la
+// descripción del PDF (en inglés) para saber a qué "bucket" de la tabla pertenece —
+// mismo mapeo que resolveBusinessUnitForProducto() en Code.gs, solo que ahí decide el
+// Business Unit y aquí decide el producto/divisor exacto dentro de ese Business Unit.
+const PALLET_PRODUCT_KEYWORD_HINT_RE = {
+  'PIÑA': /^pineapples?\b/i,
+  'AGUACATE': /^avocados?\b/i,
+  'KEYLIME': /^limes\s+key\s+lime\b/i,
+  'LIMA': /^limes\b/i,
+  'PAPAYA': /^papaya\b/i,
+  'PEPINO': /^cucumbers?\b/i,
+  'PLANTAIN': /^(?:bananas?\s+)?plantains?\b/i,
+  'SABILA': /fresh\s+aloe|aloe\s+vera/i,
+  'TOMATE': /\bromas?\b|\btomatoes?\b/i
+};
+// Extrae un patrón "NxM" (ej. "18 X 2 Lb. Bags" -> "18X2") — este formato de bolsa
+// aparece igual (mismo divisor) sin importar en qué Producto lo haya archivado la tabla,
+// así que se compara directo contra CUALQUIER fila, no solo las del Producto detectado.
+function normalizeBagPattern(desc) {
+  const m = String(desc || '').match(/(\d+)\s*[xX]\s*(\d+)/);
+  return m ? `${m[1]}X${m[2]}` : null;
+}
+// Regresa { divisor, matched, row }. matched=false significa que no se encontró una fila
+// exacta y se usó el estándar general como último recurso — buildGenericReportRows lo
+// marca como REVISAR para que alguien lo confirme a mano.
+function findPalletDivisor(desc, businessUnit) {
+  const d = String(desc || '').trim();
+  const buRows = PALLET_CONFIG.filter(r => r.businessUnit === businessUnit);
+
+  const bag = normalizeBagPattern(d);
+  if (bag) {
+    const hit = PALLET_CONFIG.find(r => String(r.presentacion).toUpperCase().replace(/\s+/g, '') === bag);
+    if (hit && hit.cajasPorPallet) return { divisor: hit.cajasPorPallet, matched: true, row: hit };
+  }
+
+  // Sin un bucket de Producto identificado, NO hay forma confiable de elegir una fila
+  // "REGULAR" — antes esto caía de vuelta a bucketRows = TODAS las filas del Business
+  // Unit sin filtrar, y el paso (5) de abajo terminaba agarrando la primera fila
+  // "REGULAR" que encontrara (de CUALQUIER producto de esa sección), reportándola como
+  // "matched" aunque no tuviera nada que ver con la línea real — ej. una futura línea de
+  // "Lemons..." bajo CITRUS (que sí matchea las Keywords del Business Unit, pero no
+  // tiene fila propia en Pallet Config) terminaba heredando el divisor de KEYLIME o LIMA
+  // sin avisar. Ahora, sin bucket reconocido, se va derecho al estándar general marcado
+  // como REVISAR.
+  const bucketEntry = Object.entries(PALLET_PRODUCT_KEYWORD_HINT_RE).find(([, re]) => re.test(d));
+  if (!bucketEntry) return { divisor: APP_SETTINGS.standardDivisor, matched: false };
+  const bucketRows = buRows.filter(r => r.producto.toUpperCase() === bucketEntry[0]);
+  if (!bucketRows.length) return { divisor: APP_SETTINGS.standardDivisor, matched: false };
+
+  const dUpper = d.toUpperCase();
+  const specialKeywords = ['HEB', 'WALMART', "SAM'S", 'ORGANIC', 'COUNT'];
+  const special = specialKeywords.find(kw => dUpper.includes(kw));
+  if (special) {
+    const hit = bucketRows.find(r => r.presentacion.toUpperCase().includes(special));
+    if (hit && hit.cajasPorPallet) return { divisor: hit.cajasPorPallet, matched: true, row: hit };
+  }
+
+  const wm = d.match(/(\d+(?:\.\d+)?)\s*Lbs?\b/i);
+  if (wm) {
+    const libras = parseFloat(wm[1]);
+    const weightMatches = bucketRows.filter(r => Math.abs(r.libras - libras) < 0.01);
+    if (weightMatches.length === 1 && weightMatches[0].cajasPorPallet) {
+      return { divisor: weightMatches[0].cajasPorPallet, matched: true, row: weightMatches[0] };
+    }
+  }
+
+  const regular = bucketRows.find(r => r.presentacion.toUpperCase() === 'REGULAR');
+  if (regular && regular.cajasPorPallet) return { divisor: regular.cajasPorPallet, matched: true, row: regular };
+
+  return { divisor: APP_SETTINGS.standardDivisor, matched: false };
+}
+// Mismo shape de fila que buildReportRows() (sp/cliente_full/cliente_corto/pallets/
+// pallets_num/codigo/total_boxes) para poder reusar renderPapayaResults/buildXlsxBlob/
+// buildDocxBlob tal cual, sin tocarlos.
+function buildGenericReportRows(orders, businessUnit) {
+  const parsed = [];
+  for (const o of orders) {
+    const lineTypes = new Map(); // descripción cruda (tal cual) -> cajas sumadas
+    let hasMatch = false;
+    for (const [qty, desc] of o.products) {
+      if (qty === null) continue;
+      if (!classifyGenericLine(desc, businessUnit)) continue;
+      hasMatch = true;
+      const key = desc.trim();
+      lineTypes.set(key, (lineTypes.get(key) || 0) + qty);
+    }
+    if (!hasMatch) continue;
+    const shortName = shortenClientName(o.name, o.note, o.sp);
+    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, line_types: lineTypes });
+  }
+
+  const rows = [], flags = [];
+  for (const p of parsed) {
+    let totalBoxes = 0, totalPallets = 0, anyUnmatched = false;
+    const codeParts = [];
+    for (const [desc, qty] of p.line_types.entries()) {
+      const { divisor, matched } = findPalletDivisor(desc, businessUnit);
+      const palletsThis = Math.floor(qty / divisor);
+      const remThis = qty % divisor;
+      totalBoxes += qty; totalPallets += palletsThis;
+      if (!matched) anyUnmatched = true;
+      codeParts.push(remThis ? `${qty} ${desc} (${palletsThis}p +${remThis}bxs)` : `${qty} ${desc} (${palletsThis}p)`);
+    }
+    rows.push({
+      sp: p.sp, cliente_full: p.cliente_full, cliente_corto: p.cliente_corto,
+      pallets: String(totalPallets), pallets_num: totalPallets, codigo: codeParts.join('; '), total_boxes: totalBoxes
+    });
+    if (anyUnmatched) flags.push(`${p.cliente_corto} (${p.sp}): no se encontró una fila exacta en Pallet Config para uno o más productos — se usó el estándar, revisar.`);
+    if (totalPallets === 0 && totalBoxes > 0) flags.push(`${p.cliente_corto} (${p.sp}): ${totalBoxes} cajas no llegan a 1 pallet completo — revisar.`);
+  }
+  return [rows, flags];
+}
+
 function crc32(bytes) {
   let table = crc32.table;
   if (!table) {
@@ -6359,6 +6673,30 @@ let papayaLastRows = [], papayaLastFlags = [], papayaLastFileName = "reporte", p
 // medio uso y disparar un writeDraft/syncDraft encimado con datos mezclados de los 2 PDFs.
 let papayaProcessing = false;
 
+// Business Unit elegido en el selector de arriba (Upload) — Papaya sigue con su propia
+// lógica fina (classifyPapayaLine/buildReportRows), las otras 3 usan el reporte
+// genérico (buildGenericReportRows, ver más arriba). "Send + Sync to Draft" NO depende
+// de esto — siempre manda TODOS los productos de TODAS las órdenes del PDF, sin
+// importar a qué Business Unit pertenezcan (eso ya lo hacía antes de este selector).
+let papayaSelectedBU = 'PAPAYA';
+const PAPAYA_BU_LABELS = { PAPAYA: '🥭 Chula Brand — Papaya Report', CITRUS: '🍋 Chula Brand — Citrus Report', PLANTAIN: '🍌 Chula Brand — Plantain Report', TROPICALES: '🍍 Chula Brand — Tropicales Report' };
+const PAPAYA_BU_NAMES = { PAPAYA: 'papaya', CITRUS: 'citrus', PLANTAIN: 'plantain', TROPICALES: 'tropicales' };
+const papayaHeaderTitleEl = document.getElementById("papayaHeaderTitle");
+const papayaResultsCodeHeader = document.querySelector("#papayaResultsTable thead th:last-child");
+document.querySelectorAll('#papayaBuSelect .pp-bu-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    papayaSelectedBU = btn.dataset.bu;
+    document.querySelectorAll('#papayaBuSelect .pp-bu-btn').forEach(b => b.classList.toggle('active', b === btn));
+    if (papayaHeaderTitleEl) papayaHeaderTitleEl.textContent = PAPAYA_BU_LABELS[papayaSelectedBU] || PAPAYA_BU_LABELS.PAPAYA;
+    if (papayaResultsCodeHeader) papayaResultsCodeHeader.textContent = papayaSelectedBU === 'PAPAYA' ? 'COLOR & SIZE' : 'PRODUCTO';
+    // Cambiar de Business Unit invalida cualquier reporte ya mostrado de la selección
+    // anterior — sin esto, alguien podía subir el PDF en Papaya, cambiar a Citrus, y
+    // descargar/enviar el reporte de Papaya creyendo que ya era el de Citrus.
+    papayaResultsCard.style.display = "none";
+    papayaStatusEl.textContent = "";
+  });
+});
+
 papayaDropzone.addEventListener("click", () => papayaFileInput.click());
 // tabindex+role="button" en el HTML lo hace enfocable, pero eso solo no responde a
 // Enter/Espacio como un <button> de verdad — antes no había NINGUNA forma de abrir el
@@ -6401,6 +6739,12 @@ async function handlePapayaFile(file) {
   // clientIsActive) — goPapayaUpload() ya lo dispara al entrar a esta pantalla, esto es
   // solo por si el PDF se soltó tan rápido que esa llamada todavía no había terminado.
   if (!clientsConfigLoaded) await loadClientsConfig();
+  // Igual para Pallet Config/Business Unit Keywords, pero solo hacen falta si el
+  // reporte no es de Papaya (esa sigue con divisorFor()/CLIENTS_CONFIG, sin tocar).
+  if (papayaSelectedBU !== 'PAPAYA') {
+    if (!palletConfigLoaded) await loadPalletConfig();
+    if (!businessUnitKeywordsLoaded) await loadBusinessUnitKeywords();
+  }
   try {
     const buf = await file.arrayBuffer();
     const lines = await extractLines(buf);
@@ -6436,11 +6780,17 @@ async function handlePapayaFile(file) {
     const skippedInactive = papayaLastDraftRows.filter(r => !clientIsActive(r.cliente)).length;
     if (skippedInactive) papayaLastDraftRows = papayaLastDraftRows.filter(r => clientIsActive(r.cliente));
 
-    const [rows, flags] = buildReportRows(orders);
+    // Papaya sigue con su propia lógica fina (classifyPapayaLine/buildReportRows,
+    // divisor por cliente); las otras 3 secciones usan el reporte genérico (código =
+    // descripción cruda, divisor por producto vía Pallet Config) — ver buildGenericReportRows.
+    const [rows, flags] = papayaSelectedBU === 'PAPAYA'
+      ? buildReportRows(orders)
+      : buildGenericReportRows(orders, papayaSelectedBU);
     papayaLastRows = rows; papayaLastFlags = flags;
     renderPapayaResults(rows, flags);
     const skippedNote = skippedInactive ? (' (' + skippedInactive + ' order' + (skippedInactive === 1 ? '' : 's') + ' skipped — inactive client)') : '';
-    papayaStatusEl.textContent = (rows.length ? "Done." : "Done — this PDF has no papaya, but you can still send the orders to Draft.") + skippedNote;
+    const noneLabel = PAPAYA_BU_NAMES[papayaSelectedBU] || 'papaya';
+    papayaStatusEl.textContent = (rows.length ? "Done." : `Done — this PDF has no ${noneLabel}, but you can still send the orders to Draft.`) + skippedNote;
     // Se espera a que termine (ya no es fire-and-forget) para que el guard de arriba
     // también cubra el envío al Draft, no solo la lectura del PDF.
     await sendAndSyncDraft();
@@ -6453,11 +6803,12 @@ async function handlePapayaFile(file) {
 }
 
 function renderPapayaResults(rows, flags) {
+  const buName = PAPAYA_BU_NAMES[papayaSelectedBU] || 'papaya';
   if (!rows.length) {
-    papayaSummaryEl.innerHTML = `This PDF has no papaya lines — no pallet report to show, but the orders are already ready for <b>Send + Sync to Draft</b>.`;
+    papayaSummaryEl.innerHTML = `This PDF has no ${buName} lines — no pallet report to show, but the orders are already ready for <b>Send + Sync to Draft</b>.`;
   } else {
     const total = rows.reduce((s, r) => s + r.pallets_num, 0);
-    papayaSummaryEl.innerHTML = `<b>${rows.length}</b> orders with papaya &nbsp;·&nbsp; <b>${total}</b> total pallets`;
+    papayaSummaryEl.innerHTML = `<b>${rows.length}</b> orders with ${buName} &nbsp;·&nbsp; <b>${total}</b> total pallets`;
   }
 
   papayaTbody.innerHTML = "";
@@ -6486,19 +6837,21 @@ function renderPapayaResults(rows, flags) {
 }
 
 papayaDownloadExcelBtn.addEventListener("click", () => {
-  const blob = buildXlsxBlob(`CHULA BRAND - PAPAYA REPORT ${papayaLastFileName}`, papayaLastRows, papayaLastFlags);
+  const buLabel = papayaSelectedBU === 'PAPAYA' ? 'PAPAYA' : papayaSelectedBU;
+  const blob = buildXlsxBlob(`CHULA BRAND - ${buLabel} REPORT ${papayaLastFileName}`, papayaLastRows, papayaLastFlags);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `Papaya_Report_${papayaLastFileName}.xlsx`;
+  a.href = url; a.download = `${titleCase(buLabel)}_Report_${papayaLastFileName}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 });
 
 papayaDownloadWordBtn.addEventListener("click", () => {
-  const blob = buildDocxBlob(`CHULA BRAND - PAPAYA REPORT ${papayaLastFileName}`, papayaLastRows);
+  const buLabel = papayaSelectedBU === 'PAPAYA' ? 'PAPAYA' : papayaSelectedBU;
+  const blob = buildDocxBlob(`CHULA BRAND - ${buLabel} REPORT ${papayaLastFileName}`, papayaLastRows);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `Papaya_Report_${papayaLastFileName}.docx`;
+  a.href = url; a.download = `${titleCase(buLabel)}_Report_${papayaLastFileName}.docx`;
   a.click();
   URL.revokeObjectURL(url);
 });
