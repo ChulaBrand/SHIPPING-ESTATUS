@@ -6683,19 +6683,46 @@ const PAPAYA_BU_LABELS = { PAPAYA: '🥭 Chula Brand — Papaya Report', CITRUS:
 const PAPAYA_BU_NAMES = { PAPAYA: 'papaya', CITRUS: 'citrus', PLANTAIN: 'plantain', TROPICALES: 'tropicales' };
 const papayaHeaderTitleEl = document.getElementById("papayaHeaderTitle");
 const papayaResultsCodeHeader = document.querySelector("#papayaResultsTable thead th:last-child");
+// Órdenes ya parseadas del último PDF leído (ver handlePapayaFile) — se guardan aparte
+// para poder cambiar de Business Unit y sacar los 4 reportes del MISMO PDF sin tener
+// que volver a subirlo. "Send + Sync to Draft" ya mandó todos los productos al Draft
+// en cuanto se leyó el PDF (ver handlePapayaFile), así que cambiar de sección después
+// solo vuelve a armar la tabla/el reporte — nunca reenvía nada.
+let papayaLastOrders = [];
+let papayaLastSkippedNote = '';
 document.querySelectorAll('#papayaBuSelect .pp-bu-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    if (btn.dataset.bu === papayaSelectedBU) return; // ya está en esta sección, nada que rehacer
     papayaSelectedBU = btn.dataset.bu;
     document.querySelectorAll('#papayaBuSelect .pp-bu-btn').forEach(b => b.classList.toggle('active', b === btn));
     if (papayaHeaderTitleEl) papayaHeaderTitleEl.textContent = PAPAYA_BU_LABELS[papayaSelectedBU] || PAPAYA_BU_LABELS.PAPAYA;
     if (papayaResultsCodeHeader) papayaResultsCodeHeader.textContent = papayaSelectedBU === 'PAPAYA' ? 'COLOR & SIZE' : 'PRODUCTO';
-    // Cambiar de Business Unit invalida cualquier reporte ya mostrado de la selección
-    // anterior — sin esto, alguien podía subir el PDF en Papaya, cambiar a Citrus, y
-    // descargar/enviar el reporte de Papaya creyendo que ya era el de Citrus.
-    papayaResultsCard.style.display = "none";
-    papayaStatusEl.textContent = "";
+    if (papayaLastOrders.length) {
+      // Ya hay un PDF leído — rearma el reporte de esta sección con las mismas órdenes,
+      // sin volver a pedir el archivo.
+      await regeneratePapayaReport();
+    } else {
+      papayaResultsCard.style.display = "none";
+      papayaStatusEl.textContent = "";
+    }
   });
 });
+// Vuelve a armar (rows/flags) y mostrar el reporte de papayaSelectedBU a partir de
+// papayaLastOrders — usado tanto al terminar de leer un PDF como al cambiar de sección
+// después, para no duplicar esta lógica en los dos lugares.
+async function regeneratePapayaReport() {
+  if (papayaSelectedBU !== 'PAPAYA') {
+    if (!palletConfigLoaded) await loadPalletConfig();
+    if (!businessUnitKeywordsLoaded) await loadBusinessUnitKeywords();
+  }
+  const [rows, flags] = papayaSelectedBU === 'PAPAYA'
+    ? buildReportRows(papayaLastOrders)
+    : buildGenericReportRows(papayaLastOrders, papayaSelectedBU);
+  papayaLastRows = rows; papayaLastFlags = flags;
+  renderPapayaResults(rows, flags);
+  const noneLabel = PAPAYA_BU_NAMES[papayaSelectedBU] || 'papaya';
+  papayaStatusEl.textContent = (rows.length ? "Done." : `Done — this PDF has no ${noneLabel}, but you can still send the orders to Draft.`) + papayaLastSkippedNote;
+}
 
 papayaDropzone.addEventListener("click", () => papayaFileInput.click());
 // tabindex+role="button" en el HTML lo hace enfocable, pero eso solo no responde a
@@ -6717,6 +6744,8 @@ papayaResetBtn.addEventListener("click", () => {
   papayaStatusEl.textContent = "";
   papayaFileInput.value = "";
   papayaLastDraftRows = [];
+  papayaLastOrders = [];
+  papayaLastSkippedNote = '';
 });
 
 async function handlePapayaFile(file) {
@@ -6739,12 +6768,12 @@ async function handlePapayaFile(file) {
   // clientIsActive) — goPapayaUpload() ya lo dispara al entrar a esta pantalla, esto es
   // solo por si el PDF se soltó tan rápido que esa llamada todavía no había terminado.
   if (!clientsConfigLoaded) await loadClientsConfig();
-  // Igual para Pallet Config/Business Unit Keywords, pero solo hacen falta si el
-  // reporte no es de Papaya (esa sigue con divisorFor()/CLIENTS_CONFIG, sin tocar).
-  if (papayaSelectedBU !== 'PAPAYA') {
-    if (!palletConfigLoaded) await loadPalletConfig();
-    if (!businessUnitKeywordsLoaded) await loadBusinessUnitKeywords();
-  }
+  // Igual para Pallet Config/Business Unit Keywords — se cargan siempre aquí (aunque la
+  // sección elegida sea Papaya) para que cambiar de Business Unit DESPUÉS de leer el
+  // PDF (ver el selector de arriba y regeneratePapayaReport()) sea instantáneo, sin
+  // tener que esperar un fetch la primera vez que se toca Citrus/Plantain/Tropicales.
+  if (!palletConfigLoaded) await loadPalletConfig();
+  if (!businessUnitKeywordsLoaded) await loadBusinessUnitKeywords();
   try {
     const buf = await file.arrayBuffer();
     const lines = await extractLines(buf);
@@ -6779,18 +6808,13 @@ async function handlePapayaFile(file) {
     // pallets. syncDraft() hace la misma revisión otra vez del lado del servidor.
     const skippedInactive = papayaLastDraftRows.filter(r => !clientIsActive(r.cliente)).length;
     if (skippedInactive) papayaLastDraftRows = papayaLastDraftRows.filter(r => clientIsActive(r.cliente));
+    papayaLastSkippedNote = skippedInactive ? (' (' + skippedInactive + ' order' + (skippedInactive === 1 ? '' : 's') + ' skipped — inactive client)') : '';
 
-    // Papaya sigue con su propia lógica fina (classifyPapayaLine/buildReportRows,
-    // divisor por cliente); las otras 3 secciones usan el reporte genérico (código =
-    // descripción cruda, divisor por producto vía Pallet Config) — ver buildGenericReportRows.
-    const [rows, flags] = papayaSelectedBU === 'PAPAYA'
-      ? buildReportRows(orders)
-      : buildGenericReportRows(orders, papayaSelectedBU);
-    papayaLastRows = rows; papayaLastFlags = flags;
-    renderPapayaResults(rows, flags);
-    const skippedNote = skippedInactive ? (' (' + skippedInactive + ' order' + (skippedInactive === 1 ? '' : 's') + ' skipped — inactive client)') : '';
-    const noneLabel = PAPAYA_BU_NAMES[papayaSelectedBU] || 'papaya';
-    papayaStatusEl.textContent = (rows.length ? "Done." : `Done — this PDF has no ${noneLabel}, but you can still send the orders to Draft.`) + skippedNote;
+    // Se guardan las órdenes ya parseadas para poder cambiar de Business Unit después
+    // y sacar los 4 reportes de este mismo PDF sin volver a subirlo (ver el selector
+    // de arriba y regeneratePapayaReport()).
+    papayaLastOrders = orders;
+    await regeneratePapayaReport();
     // Se espera a que termine (ya no es fire-and-forget) para que el guard de arriba
     // también cubra el envío al Draft, no solo la lectura del PDF.
     await sendAndSyncDraft();
