@@ -6243,38 +6243,62 @@ function findPalletDivisor(desc, businessUnit) {
 // Mismo shape de fila que buildReportRows() (sp/cliente_full/cliente_corto/pallets/
 // pallets_num/codigo/total_boxes) para poder reusar renderPapayaResults/buildXlsxBlob/
 // buildDocxBlob tal cual, sin tocarlos.
+// Sin fila de Pallet Config reconocida (findPalletDivisor no encontró bucket), no hay
+// nombre de Producto que mostrar — se usa la primera palabra de la descripción del PDF
+// como respaldo (ej. "Something Unknown 10 Lbs." -> "SOMETHING"), y el flag de REVISAR
+// ya avisa que ese producto necesita revisarse/agregarse a Pallet Config.
+function fallbackProductLabel(desc) {
+  const m = String(desc || '').trim().match(/^([A-Za-z']+)/);
+  return m ? m[1].toUpperCase() : '?';
+}
+// Mismo estilo de código compacto que Papaya (ej. "¾-24"): "{pallets}-{PRODUCTO}", con
+// "(+resto)" si no cae exacto — varias líneas se juntan bajo el MISMO Producto (ej. dos
+// presentaciones de LIMA en la misma orden) para que el código quede tan corto como el
+// de Papaya en vez de una lista larga de descripciones crudas del PDF.
 function buildGenericReportRows(orders, businessUnit) {
   const parsed = [];
   for (const o of orders) {
-    const lineTypes = new Map(); // descripción cruda (tal cual) -> cajas sumadas
+    const productGroups = new Map(); // PRODUCTO (mayúsculas) -> { label, qty, divisor, matched }
     let hasMatch = false;
     for (const [qty, desc] of o.products) {
       if (qty === null) continue;
       if (!classifyGenericLine(desc, businessUnit)) continue;
       hasMatch = true;
-      const key = desc.trim();
-      lineTypes.set(key, (lineTypes.get(key) || 0) + qty);
+      const { divisor, matched, row } = findPalletDivisor(desc, businessUnit);
+      const label = row ? row.producto : fallbackProductLabel(desc);
+      const key = label.toUpperCase();
+      // Si el mismo Producto ya apareció con otra presentación (y por lo tanto otro
+      // divisor) en esta misma orden, se queda con el divisor de la PRIMERA línea vista
+      // — simplificación a propósito, en la práctica cada orden trae una sola
+      // presentación por producto.
+      const g = productGroups.get(key) || { label, qty: 0, divisor, matched };
+      g.qty += qty;
+      productGroups.set(key, g);
     }
     if (!hasMatch) continue;
     const shortName = shortenClientName(o.name, o.note, o.sp);
-    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, line_types: lineTypes });
+    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, groups: [...productGroups.values()] });
   }
 
   const rows = [], flags = [];
   for (const p of parsed) {
+    const multiType = p.groups.length > 1;
     let totalBoxes = 0, totalPallets = 0, anyUnmatched = false;
     const codeParts = [];
-    for (const [desc, qty] of p.line_types.entries()) {
-      const { divisor, matched } = findPalletDivisor(desc, businessUnit);
-      const palletsThis = Math.floor(qty / divisor);
-      const remThis = qty % divisor;
-      totalBoxes += qty; totalPallets += palletsThis;
-      if (!matched) anyUnmatched = true;
-      codeParts.push(remThis ? `${qty} ${desc} (${palletsThis}p +${remThis}bxs)` : `${qty} ${desc} (${palletsThis}p)`);
+    for (const g of p.groups) {
+      const palletsThis = Math.floor(g.qty / g.divisor);
+      const remThis = g.qty % g.divisor;
+      totalBoxes += g.qty; totalPallets += palletsThis;
+      if (!g.matched) anyUnmatched = true;
+      if (multiType) {
+        codeParts.push(remThis ? `${palletsThis}-${g.label}(+${remThis})` : `${palletsThis}-${g.label}`);
+      } else {
+        codeParts.push(remThis ? `${g.label} (+${remThis})` : g.label);
+      }
     }
     rows.push({
       sp: p.sp, cliente_full: p.cliente_full, cliente_corto: p.cliente_corto,
-      pallets: String(totalPallets), pallets_num: totalPallets, codigo: codeParts.join('; '), total_boxes: totalBoxes
+      pallets: String(totalPallets), pallets_num: totalPallets, codigo: codeParts.join(' '), total_boxes: totalBoxes
     });
     if (anyUnmatched) flags.push(`${p.cliente_corto} (${p.sp}): no se encontró una fila exacta en Pallet Config para uno o más productos — se usó el estándar, revisar.`);
     if (totalPallets === 0 && totalBoxes > 0) flags.push(`${p.cliente_corto} (${p.sp}): ${totalBoxes} cajas no llegan a 1 pallet completo — revisar.`);
