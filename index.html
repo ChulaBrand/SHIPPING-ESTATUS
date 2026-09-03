@@ -6251,13 +6251,33 @@ function fallbackProductLabel(desc) {
   const m = String(desc || '').trim().match(/^([A-Za-z']+)/);
   return m ? m[1].toUpperCase() : '?';
 }
-// Mismo estilo de código compacto que Papaya (ej. "¾-24"): "{pallets}-{PRODUCTO}", con
-// "(+resto)" si no cae exacto. Se agrupa por Producto+Presentación (no solo Producto) —
-// dos presentaciones distintas del mismo Producto en la misma orden (ej. Lima Regular y
-// Lima HEB) NUNCA se juntan en una sola línea, para no perder de cuál presentación se
-// trata ni cuánto hay de cada una — mismo cuidado que Papaya nunca junta ½ con ¾. Varias
-// líneas del PDF con la MISMA Presentación sí se suman entre ellas (ej. el mismo
-// producto repetido por tarima).
+// Abreviatura de 2 letras por Producto (confirmada con el usuario) — igual que
+// PALLET_PRODUCT_KEYWORD_HINT_RE, un producto de Pallet Config que no esté en esta
+// lista (nuevo, agregado desde Admin) cae a las primeras 2 letras de su nombre.
+const PRODUCT_ABBR = { 'PIÑA': 'PI', AGUACATE: 'AG', KEYLIME: 'KL', LIMA: 'LI', PAPAYA: 'PA', PEPINO: 'PE', PLANTAIN: 'PL', SABILA: 'SA', TOMATE: 'TO' };
+function productAbbr(producto) {
+  const key = String(producto || '').trim().toUpperCase();
+  return PRODUCT_ABBR[key] || key.slice(0, 2);
+}
+// Abreviatura corta de Presentación — las especiales (Regular/Walmart/HEB/etc.) a un
+// código fijo, un patrón de bolsa "NxM" se deja tal cual en minúsculas (ej. "17x2"), y
+// cualquier otra cosa cae a sus primeras 4 letras/números.
+const PRESENTACION_ABBR = { REGULAR: 'REG', WALMART: 'WM', HEB: 'HEB', "SAM'S": 'SAMS', 'ORGANIC FANCY': 'ORG', COUNT: 'CNT', CONVENCIONAL: 'CONV' };
+function presentacionAbbr(presentacion) {
+  const p = String(presentacion || '').trim().toUpperCase();
+  if (!p) return '';
+  if (PRESENTACION_ABBR[p]) return PRESENTACION_ABBR[p];
+  if (/^\d+X\d+$/.test(p)) return p.toLowerCase();
+  return p.replace(/[^A-Z0-9]/g, '').slice(0, 4);
+}
+// Código pedido por el usuario: "{cajas};{PRODUCTO-abrev}{Presentación-abrev}" por cada
+// Producto+Presentación distinto de la orden (ej. "34;KL17x2"), separados por ", " — las
+// cajas son las de VERDAD del PDF, no pallets redondeados, así que nunca se pierde
+// cuánto había exactamente de cada presentación. Se agrupa por Producto+Presentación
+// (no solo Producto) para que dos presentaciones del mismo Producto en la misma orden
+// (ej. Lima Regular y Lima HEB) salgan como entradas separadas — mismo cuidado que
+// Papaya nunca junta ½ con ¾. Varias líneas del PDF con la MISMA Presentación sí se
+// suman entre ellas (ej. el mismo producto repetido por tarima).
 function buildGenericReportRows(orders, businessUnit) {
   const parsed = [];
   for (const o of orders) {
@@ -6276,38 +6296,23 @@ function buildGenericReportRows(orders, businessUnit) {
       productGroups.set(key, g);
     }
     if (!hasMatch) continue;
-    const groups = [...productGroups.values()];
-    // La Presentación solo se agrega al código cuando el mismo Producto trae MÁS DE UNA
-    // presentación distinta en esta orden — con una sola, mostrarla no distingue nada
-    // (ej. "1-TOMATE" en vez de "1-TOMATE CONVENCIONAL", que es su única presentación).
-    const presentacionCountByProducto = new Map();
-    groups.forEach(g => presentacionCountByProducto.set(g.producto, (presentacionCountByProducto.get(g.producto) || 0) + 1));
-    groups.forEach(g => {
-      g.label = (presentacionCountByProducto.get(g.producto) > 1 && g.presentacion) ? `${g.producto} ${g.presentacion}` : g.producto;
-    });
     const shortName = shortenClientName(o.name, o.note, o.sp);
-    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, groups });
+    parsed.push({ sp: o.sp, cliente_full: o.name, cliente_corto: shortName, groups: [...productGroups.values()] });
   }
 
   const rows = [], flags = [];
   for (const p of parsed) {
-    const multiType = p.groups.length > 1;
     let totalBoxes = 0, totalPallets = 0, anyUnmatched = false;
     const codeParts = [];
     for (const g of p.groups) {
       const palletsThis = Math.floor(g.qty / g.divisor);
-      const remThis = g.qty % g.divisor;
       totalBoxes += g.qty; totalPallets += palletsThis;
       if (!g.matched) anyUnmatched = true;
-      if (multiType) {
-        codeParts.push(remThis ? `${palletsThis}-${g.label}(+${remThis})` : `${palletsThis}-${g.label}`);
-      } else {
-        codeParts.push(remThis ? `${g.label} (+${remThis})` : g.label);
-      }
+      codeParts.push(`${g.qty};${productAbbr(g.producto)}${presentacionAbbr(g.presentacion)}`);
     }
     rows.push({
       sp: p.sp, cliente_full: p.cliente_full, cliente_corto: p.cliente_corto,
-      pallets: String(totalPallets), pallets_num: totalPallets, codigo: codeParts.join(' '), total_boxes: totalBoxes
+      pallets: String(totalPallets), pallets_num: totalPallets, codigo: codeParts.join(', '), total_boxes: totalBoxes
     });
     if (anyUnmatched) flags.push(`${p.cliente_corto} (${p.sp}): no se encontró una fila exacta en Pallet Config para uno o más productos — se usó el estándar, revisar.`);
     if (totalPallets === 0 && totalBoxes > 0) flags.push(`${p.cliente_corto} (${p.sp}): ${totalBoxes} cajas no llegan a 1 pallet completo — revisar.`);
