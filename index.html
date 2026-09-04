@@ -1002,11 +1002,10 @@
     <div class="admin-shell">
     <div class="admin-sidebar">
       <button class="admin-tab-btn active" data-tab="users" onclick="showAdminTab('users')"><i class="ti ti-users"></i>Users</button>
-      <button class="admin-tab-btn" data-tab="clients" onclick="showAdminTab('clients')"><i class="ti ti-building-store"></i>Clients</button>
+      <button class="admin-tab-btn" data-tab="clients" onclick="showAdminTab('clients')"><i class="ti ti-building-store"></i>Clients & Pallets</button>
       <button class="admin-tab-btn" data-tab="driver" onclick="showAdminTab('driver')"><i class="ti ti-truck"></i>Driver/Client Screen</button>
       <button class="admin-tab-btn" data-tab="settings" onclick="showAdminTab('settings')"><i class="ti ti-clipboard-list"></i>Order Coordinator</button>
       <button class="admin-tab-btn" data-tab="business" onclick="showAdminTab('business')"><i class="ti ti-category-2"></i>Business Units</button>
-      <button class="admin-tab-btn" data-tab="pallet" onclick="showAdminTab('pallet')"><i class="ti ti-package"></i>Pallet Config</button>
       <button class="admin-tab-btn" data-tab="analytics" onclick="showAdminTab('analytics')"><i class="ti ti-chart-bar"></i>Analytics Layout</button>
     </div>
     <div class="admin-main">
@@ -1055,8 +1054,8 @@
 
     <div class="admin-tab-panel" id="admin-tab-clients" style="display:none;">
       <div class="admin-section-card">
-        <div class="admin-card-header"><span class="icon"><i class="ti ti-box"></i></span><p class="section-label" style="margin-bottom:0;">Boxes per pallet</p></div>
-        <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 8px;">The standard applies when no client/store below has its own value set. HEB is detected by product, not by client. Saving Standard/HEB here also updates the PAPAYA rows on the Pallet Config tab — same numbers, kept in sync automatically.</p>
+        <div class="admin-card-header"><span class="icon"><i class="ti ti-box"></i></span><div><p class="section-label" style="margin-bottom:0;">Boxes per pallet — by client (Papaya)</p><p class="subtitle">Papaya's report looks here first; Citrus/Plantain/Tropicales use the by-product table below instead</p></div></div>
+        <p style="font-size:11.5px;color:var(--text-faint);margin:8px 0 8px;">The standard applies when no client/store below has its own value set. HEB is detected by product, not by client. Saving Standard/HEB also updates the PAPAYA rows in the table below — same numbers, always in sync.</p>
         <div class="settings-group"><div class="settings-row"><label>Standard</label><input type="number" id="setting-standardDivisor"></div></div>
         <div class="settings-group"><div class="settings-row"><label>HEB</label><input type="number" id="setting-hebDivisor"></div></div>
         <div class="settings-group">
@@ -1088,6 +1087,26 @@
         <div class="admin-card-header"><span class="icon"><i class="ti ti-building-store"></i></span><p class="section-label" style="margin-bottom:0;">Clients</p></div>
         <div id="admin-client-list"></div>
       </div>
+
+      <div class="admin-info-box" style="margin-top:22px;"><i class="ti ti-package"></i><span>Boxes per pallet — by product (Citrus/Plantain/Tropicales). Used by the Upload screen's reports for those 3 sections — the PAPAYA rows here are the exact same "Standard"/"HEB" numbers from the card above, kept in sync automatically. The Business Unit is guessed automatically from the Producto name — if a new product doesn't match, it lands under "Unassigned" and needs the Business Unit set by hand in the Sheet.</span></div>
+      <div class="admin-info-box" id="pallet-reconcile-warning" style="display:none;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);"><i class="ti ti-alert-triangle"></i><span id="pallet-reconcile-warning-text"></span></div>
+
+      <div class="checklist" style="margin:0 0 16px;">
+        <p class="checklist-title"><i class="ti ti-package"></i> Add row</p>
+        <form style="display:flex;flex-direction:column;gap:8px;" onsubmit="event.preventDefault(); adminAddPalletConfigRow();">
+          <input id="pallet-new-producto" type="text" placeholder="Producto (e.g. LIMA)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <input id="pallet-new-presentacion" type="text" placeholder="Presentación (e.g. REGULAR)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <div style="display:flex;gap:8px;">
+            <input id="pallet-new-libras" type="number" placeholder="Libras" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
+            <input id="pallet-new-cajas" type="number" placeholder="Cajas/Pallet" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
+          </div>
+          <input id="pallet-new-comentario" type="text" placeholder="Comentario (optional)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
+          <button type="submit" class="btn-primary">Add row</button>
+        </form>
+        <p class="upload-status show" id="admin-add-pallet-status" role="status" aria-live="polite" style="display:none;"></p>
+      </div>
+
+      <div id="admin-pallet-config-list"></div>
     </div>
 
     <div class="admin-tab-panel" id="admin-tab-driver" style="display:none;">
@@ -1217,28 +1236,6 @@
       </div>
 
       <div id="admin-business-units-list"></div>
-    </div>
-
-    <div class="admin-tab-panel" id="admin-tab-pallet" style="display:none;">
-      <div class="admin-info-box"><i class="ti ti-info-circle"></i><span>Boxes-per-pallet reference table used by the Upload screen's reports for all 4 sections — including Papaya now: the PAPAYA/REGULAR and PAPAYA/HEB rows below are the same "Standard"/"HEB" numbers editable on the Clients tab (editing either place keeps both in sync). The Business Unit is guessed automatically from the Producto name — if a new product doesn't match, it lands under "Unassigned" and needs the Business Unit set by hand in the Sheet.</span></div>
-      <div class="admin-info-box" id="pallet-reconcile-warning" style="display:none;background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn-text);"><i class="ti ti-alert-triangle"></i><span id="pallet-reconcile-warning-text"></span></div>
-
-      <div class="checklist" style="margin:0 0 16px;">
-        <p class="checklist-title"><i class="ti ti-package"></i> Add row</p>
-        <form style="display:flex;flex-direction:column;gap:8px;" onsubmit="event.preventDefault(); adminAddPalletConfigRow();">
-          <input id="pallet-new-producto" type="text" placeholder="Producto (e.g. LIMA)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
-          <input id="pallet-new-presentacion" type="text" placeholder="Presentación (e.g. REGULAR)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
-          <div style="display:flex;gap:8px;">
-            <input id="pallet-new-libras" type="number" placeholder="Libras" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
-            <input id="pallet-new-cajas" type="number" placeholder="Cajas/Pallet" style="flex:1;height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'IBM Plex Mono',monospace;font-size:14px;">
-          </div>
-          <input id="pallet-new-comentario" type="text" placeholder="Comentario (optional)" style="height:44px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-family:'Inter',sans-serif;font-size:14px;">
-          <button type="submit" class="btn-primary">Add row</button>
-        </form>
-        <p class="upload-status show" id="admin-add-pallet-status" role="status" aria-live="polite" style="display:none;"></p>
-      </div>
-
-      <div id="admin-pallet-config-list"></div>
     </div>
 
     <div class="admin-tab-panel" id="admin-tab-analytics" style="display:none;">
@@ -2526,11 +2523,13 @@ function showAdminTab(tab) {
   document.querySelectorAll('.admin-tab-panel').forEach(p => p.style.display = 'none');
   document.getElementById('admin-tab-' + tab).style.display = '';
   document.querySelectorAll('.admin-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  // Pallet Config vive ahora dentro de esta misma pestaña (ver "Clients & Pallets"),
+  // así que se carga junto con Clients — ya no tiene su propio tab separado.
   if (tab === 'clients' && !adminClientsLoaded) { adminClientsLoaded = true; loadAdminClients(); loadCajasSettings(); }
+  if (tab === 'clients' && !adminPalletConfigLoaded) { adminPalletConfigLoaded = true; loadAdminPalletConfig(); }
   if (tab === 'settings' && !adminSettingsLoaded) { adminSettingsLoaded = true; loadAdminSettings(); }
   if (tab === 'driver' && !adminDriverLoaded) { adminDriverLoaded = true; loadDriverScreenSettings(); }
   if (tab === 'business' && !adminBusinessUnitsLoaded) { adminBusinessUnitsLoaded = true; loadAdminBusinessUnits(); }
-  if (tab === 'pallet' && !adminPalletConfigLoaded) { adminPalletConfigLoaded = true; loadAdminPalletConfig(); }
 }
 
 // Junta en una sola confirmación TODO lo que va a cambiar (nada de "sí" a ciegas
@@ -3277,11 +3276,11 @@ async function syncPapayaDivisorsToPalletConfig() {
       : await adminApiCall('adminAddPalletConfigRow', payload);
     if (result && !result.error) { if (existing) existing.cajasPorPallet = t.value; else PALLET_CONFIG.push(Object.assign({ businessUnit: 'PAPAYA' }, payload)); }
   }
-  // Si Admin tiene la pestaña Pallet Config abierta en este momento, refresca su propia
-  // caché (palletConfigData, separada de PALLET_CONFIG) para que se vea el número nuevo
-  // sin tener que salir y volver a entrar a la pestaña.
-  const palletTab = document.getElementById('admin-tab-pallet');
-  if (palletTab && palletTab.style.display !== 'none') {
+  // Pallet Config vive en esta misma pestaña (Clients & Pallets) — si está abierta
+  // ahora mismo, refresca su propia caché (palletConfigData, separada de PALLET_CONFIG)
+  // para que se vea el número nuevo sin tener que salir y volver a entrar.
+  const clientsTab = document.getElementById('admin-tab-clients');
+  if (clientsTab && clientsTab.style.display !== 'none') {
     adminPalletConfigLoaded = false;
     loadAdminPalletConfig();
   }
